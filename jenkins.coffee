@@ -18,8 +18,9 @@
 #   hubot jenkins list <filter> - lists Jenkins jobs. 
 #   hubot jenkins describe <job> - Describes the specified Jenkins job
 #   hubot jenkins last <job> - Details about the last build for the specified Jenkins job
-#   hubot jenkins log <job> - prints Jenkins console text of last failed build to chat room
-#   hubot jenkins log <job>, <build number> - prints Jenkins console text of specified build number to chat room
+#   hubot jenkins log <job> - prints Jenkins console log of last failed build to chat room
+#   hubot jenkins log <job>, <build number> - prints Jenkins console log of specified build number to chat room
+#   hubot jenkins log <job>, <build number> (optional), <build-variant> - prints Jenkins console log for specified build variant
 #
 # Author:
 # Adapted from Doug Cole's jenkins.coffee
@@ -31,7 +32,7 @@ request = require 'request'
 # Holds a list of jobs, so we can trigger them with a number
 # instead of the job's name. Gets populated on when calling
 # list.
-jobList = []
+jobList = {}
 
 jenkinsBuild = (msg, buildWithEmptyParameters) ->
     job = querystring.escape msg.match[1]
@@ -178,7 +179,7 @@ jenkinsLast = (msg) ->
 jenkinsList = (msg) ->
     url = process.env.HUBOT_JENKINS_URL
     filter = new RegExp(msg.match[2], 'i')
-    req = msg.http("#{url}/api/json")
+    req = msg.http("#{url}/api/json?depth=1&tree=jobs[name,activeConfigurations[name],color]")
 
     if process.env.HUBOT_JENKINS_AUTH
       auth = new Buffer(process.env.HUBOT_JENKINS_AUTH).toString('base64')
@@ -193,18 +194,24 @@ jenkinsList = (msg) ->
             content = JSON.parse(body)
             for job in content.jobs
               # Add the job to the jobList
-              index = jobList.indexOf(job.name)
-              if index == -1 
-                jobList.push(job.name)
-                index = jobList.indexOf(job.name)
-                console.log "added job #{job.name} to jenkins list at #{index}"
+              if !jobList.hasOwnProperty("#{job.name}")
+                jobList["#{job.name}"] = job
+                console.log "added job #{job.name} to jenkins list"
 
-            for jobname in jobList
-              state = if jobname.color == "red" then "fail" else "success"
-              if ((filter.test jobname) and jenkinsCheckChannel(msg, jobname))
-                console.log "going to print #{jobname}"
-                response += "job: #{jobname}, status: #{state}\n"
-          
+            for job_name of jobList
+              console.log("this is the job #{jobList[job_name].name}")
+              state = if jobList[job_name].color == "red" then "fail" else "success"
+              if ((filter.test jobList[job_name].name) and jenkinsCheckChannel(msg, jobList[job_name].name))
+                console.log "going to print #{jobList[job_name].name}"
+                response += "job: #{jobList[job_name].name}, status: #{state}"
+                if jobList[job_name].activeConfigurations?
+                  matrix = ", build variants:\n"
+                  for variants in jobList[job_name].activeConfigurations
+                    matrix += " #{variants.name}\n"
+                  response += "#{matrix}\n"
+                else
+                  response += "\n"
+
             if response.length == 0
               msg.reply "There appears to be no jobs available for you. If you believe this is an error, please contact the build management team."  
             else
@@ -222,16 +229,10 @@ jenkinsCheckChannel = (msg, job_name) ->
       return (job_name.indexOf(market) != -1)
 
 # send build log to chat channel
-jenkinsBuildLog = (msg, robot) ->
-    url = process.env.HUBOT_JENKINS_URL
-    job = msg.match[1]
-    build_num = msg.match[2]
-
-    build = if build_num then "#{build_num}" else "lastFailedBuild"
-    path = "#{url}/job/#{job}/#{build}/consoleText"
-
+jenkinsBuildLogger = (msg, robot, build, path, job) ->
     channel = ""
     log_file = "log-#{job}-#{build}.txt"
+    console.log("#{path}")
     req = msg.http(path)
 
     if process.env.HUBOT_JENKINS_AUTH
@@ -274,7 +275,26 @@ jenkinsBuildLog = (msg, robot) ->
                     msg.send error
         catch error
           msg.send error  
+
+jenkinsBuildLog = (msg, robot) ->
+    url = process.env.HUBOT_JENKINS_URL
+    job = msg.match[1]
+    build_num = msg.match[2]
+    variant = msg.match[3]
     
+    if !jobList.hasOwnProperty(job)
+      msg.send "Could not find job: #{job}"
+    else
+      if jobList[job].activeConfigurations?
+        if !(variant?)
+          msg.send "This job has build variants. Please specify the build variant to get the correct build log. For complete list of jobs and build variants use command: jenkins list"
+          return
+    
+    build = if build_num then "#{build_num}" else "lastFailedBuild"
+    path = if variant then "#{url}/job/#{job}/#{variant}/#{build}/consoleText" else "#{url}/job/#{job}/#{build}/consoleText"
+
+    jenkinsBuildLogger(msg, robot, build, path, job)
+
  
 module.exports = (robot) ->
   robot.respond /j(?:enkins)? build ([\w\.\-_ ]+)(, (.+))?/i, (msg) ->
@@ -292,13 +312,9 @@ module.exports = (robot) ->
   robot.respond /j(?:enkins)? last (.*)/i, (msg) ->
     jenkinsLast(msg)
 
-  robot.respond /j(?:enkins)? log ([\w\.\-_]+)(?:[\,\ ]+)?([\d]+)?/i, (msg) ->
+  robot.respond /j(?:enkins)? log ([\w\.\-_]+)(?:[\,\ ]+)?([\d]+)?(?:[\,\ ]+)?([\([\w\.\-_=,\w=]+)?/i, (msg) ->
     slack_bot = robot.adapter.client
     jenkinsBuildLog(msg, slack_bot)
-
-  # this doesn't work yet
-  robot.respond /(.*)Failure (.*)/i, (msg) ->
-    jenkinsBuildLog(msg, robot)
 
   robot.jenkins = {
     list: jenkinsList,
