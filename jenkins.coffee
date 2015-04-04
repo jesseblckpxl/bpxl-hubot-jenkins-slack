@@ -196,10 +196,8 @@ jenkinsList = (msg) ->
               # Add the job to the jobList
               if !jobList.hasOwnProperty("#{job.name}")
                 jobList["#{job.name}"] = job
-                console.log "added job #{job.name} to jenkins list"
 
             for job_name of jobList
-              console.log("this is the job #{jobList[job_name].name}")
               state = if jobList[job_name].color == "red" then "fail" else "success"
               if ((filter.test jobList[job_name].name) and jenkinsCheckChannel(msg, jobList[job_name].name))
                 console.log "going to print #{jobList[job_name].name}"
@@ -228,11 +226,10 @@ jenkinsCheckChannel = (msg, job_name) ->
       market = channel.split('-').pop()
       return (job_name.indexOf(market) != -1)
 
-# send build log to chat channel
+# write build log into a text file and upload to chat channel
 jenkinsBuildLogger = (msg, robot, build, path, job) ->
     channel = ""
     log_file = "log-#{job}-#{build}.txt"
-    console.log("#{path}")
     req = msg.http(path)
 
     if process.env.HUBOT_JENKINS_AUTH
@@ -267,12 +264,10 @@ jenkinsBuildLogger = (msg, robot, build, path, job) ->
          
               request.post "https://api.slack.com/api/files.upload", {form: options }, (error, response, body) ->
                 if error
-                  msg.send "something went wrong, jesse"
+                  msg.send "something went wrong: #{error}"
                 else
-                  try
-                    msg.send "Build file uploaded."
-                  catch 
-                    msg.send error
+                  msg.send "Build file uploaded."
+
         catch error
           msg.send error  
 
@@ -281,19 +276,42 @@ jenkinsBuildLog = (msg, robot) ->
     job = msg.match[1]
     build_num = msg.match[2]
     variant = msg.match[3]
-    
-    if !jobList.hasOwnProperty(job)
-      msg.send "Could not find job: #{job}"
-    else
-      if jobList[job].activeConfigurations?
-        if !(variant?)
-          msg.send "This job has build variants. Please specify the build variant to get the correct build log. For complete list of jobs and build variants use command: jenkins list"
-          return
-    
-    build = if build_num then "#{build_num}" else "lastFailedBuild"
-    path = if variant then "#{url}/job/#{job}/#{variant}/#{build}/consoleText" else "#{url}/job/#{job}/#{build}/consoleText"
+    job_info = {}
 
-    jenkinsBuildLogger(msg, robot, build, path, job)
+    req = msg.http("#{url}/api/json?depth=1&tree=jobs[name,activeConfigurations[name],color]")
+
+    if process.env.HUBOT_JENKINS_AUTH
+      auth = new Buffer(process.env.HUBOT_JENKINS_AUTH).toString('base64')
+      req.headers Authorization: "Basic #{auth}"
+
+    req.get() (err, res, body) ->
+      if err
+        msg.send "Jenkins says: #{err}"
+      else
+        try
+          content = JSON.parse(body)
+          for activejobs in content.jobs
+            if "#{activejobs.name}".match("#{job}")
+              job_info["#{activejobs.name}"] = activejobs
+
+          if Object.keys(job_info).length == 0
+            msg.send "I couldn't locate the job: #{job}. Try running 'jenkins list' for a list of available jobs." 
+          else
+            # check for existence of build variants for the job
+            if job_info["#{job}"].activeConfigurations?
+              #check that user specified a build variant, if no variant was specified, prompt for variant.
+              if !(variant?)
+                msg.send "This job has build variants. Please specify the build variant to get the correct build log. For complete list of jobs and build variants use command: jenkins list"  
+                return
+
+            #construct path to build log    
+            build = if build_num then "#{build_num}" else "lastFailedBuild"
+            path = if variant then "#{url}/job/#{job}/#{variant}/#{build}/consoleText" else "#{url}/job/#{job}/#{build}/consoleText"
+               
+            jenkinsBuildLogger(msg, robot, build, path, job)
+            
+        catch error
+          msg.send error
 
  
 module.exports = (robot) ->
