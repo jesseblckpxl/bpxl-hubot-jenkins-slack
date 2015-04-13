@@ -267,6 +267,7 @@ jenkinsBuildLogger = (msg, robot, build, path, job) ->
                   msg.send "something went wrong: #{error}"
                 else
                   msg.send "Build file uploaded."
+                  fs.unlinkSync log_file
 
         catch error
           msg.send error  
