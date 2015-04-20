@@ -210,22 +210,26 @@ jenkinsList = (msg) ->
             content = JSON.parse(body)
             for job in content.jobs
               # Add the job to the jobList
-              index = jobList.indexOf(job.name)
-              if index == -1 
+              if jobList.indexOf(job.name) == -1 
                 jobList.push(job.name)
+              # Check job against channel name before adding it to the response
+              if (jenkinsCheckChannel(msg, job.name))
                 index = jobList.indexOf(job.name)
-                if (jenkinsCheckChannel(msg, "#{job.name}"))
-                  response += "[#{index + 1}]  #{job.name} \n"
-                  if job.activeConfigurations?
-                    for variants in job.activeConfigurations
-                      job_variant = job.name + ", " + variants.name
-                      jobList.push(job_variant)
-                      index = jobList.indexOf(job_variant)
-                      response += "[#{index + 1}]  #{job_variant} \n"
+                response += "[#{index}] #{job.name} \n"
+              if job.activeConfigurations?
+                for variant in job.activeConfigurations
+                  job_variant = job.name + ", " + variant.name
+                  if jobList.indexOf(job_variant) == -1
+                    jobList.push(job_variant)
+                  # Check job against channel before adding it to the response
+                  if (jenkinsCheckChannel(msg, job.name))
+                    index = jobList.indexOf(job_variant)
+                    response += "[#{index}] #{job_variant} \n"
 
             if response.length == 0
               msg.reply "There appears to be no jobs available for you. If you believe this is an error, please contact the build management team."  
             else
+              response += "You can trigger builds or obtain build logs using the [job number], or job name listed above."
               msg.send response
 
           catch error
@@ -239,94 +243,77 @@ jenkinsCheckChannel = (msg, job_name) ->
       market = channel.split('-').pop()
       return (job_name.indexOf(market) != -1)
 
-# write build log into a text file and upload to chat channel
-jenkinsBuildLogger = (msg, robot, build, path, job) ->
-    channel = ""
-    log_file = "log-#{job}-#{build}.txt"
-    req = msg.http(path)
+# Get build log by ID 
+jenkinsBuildLogById = (msg, robot) ->
+    job = jobList[parseInt(msg.match[1]) - 1]
 
-    if process.env.HUBOT_JENKINS_AUTH
-      auth = new Buffer(process.env.HUBOT_JENKINS_AUTH).toString('base64')
-      req.headers Authorization: "Basic #{auth}"
-
-    req.get() (err,res,body) ->
-      if err
-        msg.send "Whoops, something went wrong! #{err}"
-      else if 400 <= res.statusCode
-        msg.send "#{res.statusCode}: Build log not found, try passing in a different build number?"
+    if job
+      if job.indexOf(",") != -1
+        name = job.split(", ")
+        msg.match[1] = name[0]
+        msg.match[3] = name[1]
       else
-        try
-          fs.writeFile log_file, "#{body}", (error) ->
-            if error
-              console.error("Error writing file #{log_file}", error) 
-            else
-              log_body = ->
-                fs.readFile log_file, 'utf8', (error, body)->
-                  console.log("something went wrong trying when trying to read in the log file") if error
-                return body
+        msg.match[1] = name[0]
+      jenkinsBuildLog(msg, robot)
+    else
+      msg.send "I couldn't find that job. Try running 'jenkins list' for a list of available jobs."
 
-              # get the slack channel id to pass to slack api upload file method
-              for k of robot.channels
-                channel_name = "#{robot.channels[k].name}"
-                if channel_name.match msg.envelope.room
-                  console.log("#{k} :#{robot.channels[k].name}")
-                  channel += "#{k}"
-              api_token = process.env.HUBOT_SLACK_API_TOKEN
-              options = {token: "#{api_token}", channels: "#{channel}", filename: "#{job}-build-#{build}-log.txt"}
-              options["content"] = log_body()
-         
-              request.post "https://api.slack.com/api/files.upload", {form: options }, (error, response, body) ->
-                if error
-                  msg.send "something went wrong: #{error}"
-                else
-                  msg.send "Build file uploaded."
-                  fs.unlinkSync log_file
-
-        catch error
-          msg.send error  
 
 jenkinsBuildLog = (msg, robot) ->
     url = process.env.HUBOT_JENKINS_URL
     job = msg.match[1]
     build_num = msg.match[2]
     variant = msg.match[3]
-    job_info = {}
-
-    req = msg.http("#{url}/api/json?depth=1&tree=jobs[name,activeConfigurations[name],color]")
-
-    if process.env.HUBOT_JENKINS_AUTH
-      auth = new Buffer(process.env.HUBOT_JENKINS_AUTH).toString('base64')
-      req.headers Authorization: "Basic #{auth}"
-
-    req.get() (err, res, body) ->
-      if err
-        msg.send "Jenkins says: #{err}"
-      else
-        try
-          content = JSON.parse(body)
-          for activejobs in content.jobs
-            if "#{activejobs.name}".match("#{job}")
-              job_info["#{activejobs.name}"] = activejobs
-
-          if Object.keys(job_info).length == 0
-            msg.send "I couldn't locate the job: #{job}. Try running 'jenkins list' for a list of available jobs." 
-          else
-            # check for existence of build variants for the job
-            if job_info["#{job}"].activeConfigurations?
-              #check that user specified a build variant, if no variant was specified, prompt for variant.
-              if !(variant?)
-                msg.send "This job has build variants. Please specify the build variant to get the correct build log. For complete list of jobs and build variants use command: jenkins list"  
-                return
-
-            #construct path to build log    
-            build = if build_num then "#{build_num}" else "lastFailedBuild"
-            path = if variant then "#{url}/job/#{job}/#{variant}/#{build}/consoleText" else "#{url}/job/#{job}/#{build}/consoleText"
+    
+    if (jobList.length == 0 || !jenkinsCheckChannel(msg,job))
+      msg.send "I couldn't locate any jobs. Please try running 'jenkins list' for a list of available jobs."
+    else
+      build = if build_num then "#{build_num}" else "lastFailedBuild"
+      path = if variant then "#{url}/job/#{job}/#{variant}/#{build}/consoleText" else "#{url}/job/#{job}/#{build}/consoleText"
                
-            jenkinsBuildLogger(msg, robot, build, path, job)
-            
-        catch error
-          msg.send error
+      channel = ""
+      log_file = "log-#{job}-#{build}.txt"
+      req = msg.http(path)
 
+      if process.env.HUBOT_JENKINS_AUTH
+        auth = new Buffer(process.env.HUBOT_JENKINS_AUTH).toString('base64')
+        req.headers Authorization: "Basic #{auth}"
+
+      req.get() (err,res,body) ->
+        if err
+          msg.send "Whoops, something went wrong! #{err}"
+        else if 400 <= res.statusCode
+          msg.send "#{res.statusCode}: Build log not found, try passing in a different build number?"
+        else
+          try
+            fs.writeFile log_file, "#{body}", (error) ->
+              if error
+                console.error("Error writing file #{log_file}", error) 
+              else
+                log_body = ->
+                  fs.readFile log_file, 'utf8', (error, body)->
+                    console.log("something went wrong trying when trying to read in the log file") if error
+                  return body
+
+                # get the slack channel id to pass to slack api upload file method
+                for k of robot.channels
+                  channel_name = "#{robot.channels[k].name}"
+                  if channel_name.match msg.envelope.room
+                    console.log("#{k} :#{robot.channels[k].name}")
+                    channel += "#{k}"
+                api_token = process.env.HUBOT_SLACK_API_TOKEN
+                options = {token: "#{api_token}", channels: "#{channel}", filename: "#{job}-build-#{build}-log.txt"}
+                options["content"] = log_body()
+         
+                request.post "https://api.slack.com/api/files.upload", {form: options }, (error, response, body) ->
+                  if error
+                    msg.send "something went wrong: #{error}"
+                  else
+                    msg.send "Build file uploaded."
+                    fs.unlinkSync log_file
+
+          catch error
+            msg.send error          
  
 module.exports = (robot) ->
   robot.respond /j(?:enkins)? build ([\w\.\-_ ]+)(, (.+))?/i, (msg) ->
@@ -347,6 +334,10 @@ module.exports = (robot) ->
   robot.respond /j(?:enkins)? log ([\w\.\-_]+)(?:[\,\ ]+)?([\d]+)?(?:[\,\ ]+)?([\([\w\.\-_=,\w=]+)?/i, (msg) ->
     slack_bot = robot.adapter.client
     jenkinsBuildLog(msg, slack_bot)
+
+  robot.respond /j(?:enkins)? l (\d+)(, \d+)?/i, (msg) ->
+    slack_bot = robot.adapter.client
+    jenkinsBuildLogById(msg, slack_bot)
 
   robot.jenkins = {
     list: jenkinsList,
