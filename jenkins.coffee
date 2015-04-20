@@ -19,9 +19,10 @@
 #   hubot jenkins list - lists Jenkins jobs. 
 #   hubot jenkins describe <job> - Describes the specified Jenkins job
 #   hubot jenkins last <job> - Details about the last build for the specified Jenkins job
-#   hubot jenkins log <job> - prints Jenkins console log of last failed build to chat room
-#   hubot jenkins log <job>, <build number> - prints Jenkins console log of specified build number to chat room
-#   hubot jenkins log <job>, <build number> (optional), <build-variant> - prints Jenkins console log for specified build variant
+#   hubot jenkins l <jobNumber> - uploads Jenkins console log of job specified by jobNumber. List jobs to get number. 
+#   hubot jenkins log <job> - uploads Jenkins console log of last failed build to chat room
+#   hubot jenkins log <job>, <build number> - uploads Jenkins console log of specified build number to chat room
+#   hubot jenkins log <job>, <build number> (optional), <build-variant> - uploads Jenkins console log for specified build variant
 #
 # Author:
 # Adapted from Doug Cole's jenkins.coffee
@@ -37,7 +38,7 @@ jobList = []
 
 jenkinsBuildById = (msg) ->
     # Switch the index with the job name
-    job = jobList[parseInt(msg.match[1]) - 1]
+    job = jobList[parseInt(msg.match[1])]
 
     if job 
       if job.indexOf(",") != -1
@@ -216,11 +217,15 @@ jenkinsList = (msg) ->
               if (jenkinsCheckChannel(msg, job.name))
                 index = jobList.indexOf(job.name)
                 response += "[#{index}] #{job.name} \n"
+
+              # Check for build variants
               if job.activeConfigurations?
                 for variant in job.activeConfigurations
                   job_variant = job.name + ", " + variant.name
+                  # Add build variant to job list
                   if jobList.indexOf(job_variant) == -1
                     jobList.push(job_variant)
+
                   # Check job against channel before adding it to the response
                   if (jenkinsCheckChannel(msg, job.name))
                     index = jobList.indexOf(job_variant)
@@ -245,7 +250,9 @@ jenkinsCheckChannel = (msg, job_name) ->
 
 # Get build log by ID 
 jenkinsBuildLogById = (msg, robot) ->
-    job = jobList[parseInt(msg.match[1]) - 1]
+    job = jobList[parseInt(msg.match[1]) ]
+
+    console.log("#{job}")
 
     if job
       if job.indexOf(",") != -1
@@ -253,7 +260,7 @@ jenkinsBuildLogById = (msg, robot) ->
         msg.match[1] = name[0]
         msg.match[3] = name[1]
       else
-        msg.match[1] = name[0]
+        msg.match[1] = job
       jenkinsBuildLog(msg, robot)
     else
       msg.send "I couldn't find that job. Try running 'jenkins list' for a list of available jobs."
@@ -283,7 +290,7 @@ jenkinsBuildLog = (msg, robot) ->
         if err
           msg.send "Whoops, something went wrong! #{err}"
         else if 400 <= res.statusCode
-          msg.send "#{res.statusCode}: Build log not found, try passing in a different build number?"
+          msg.send "#{res.statusCode}: Build log not found, try passing in a different build number after the job name? "
         else
           try
             fs.writeFile log_file, "#{body}", (error) ->
