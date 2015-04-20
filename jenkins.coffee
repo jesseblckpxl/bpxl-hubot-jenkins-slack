@@ -13,9 +13,10 @@
 #
 # Commands:
 #
+#   hubot jenkins b <jobNumber> - builds the job specified by jobNumber. List jobs to get number.
 #   hubot jenkins build <job> - builds the specified Jenkins job
 #   hubot jenkins build <job>, <params> - builds the specified Jenkins job with parameters as key=value&key2=value2
-#   hubot jenkins list <filter> - lists Jenkins jobs. 
+#   hubot jenkins list - lists Jenkins jobs. 
 #   hubot jenkins describe <job> - Describes the specified Jenkins job
 #   hubot jenkins last <job> - Details about the last build for the specified Jenkins job
 #   hubot jenkins log <job> - prints Jenkins console log of last failed build to chat room
@@ -32,13 +33,29 @@ request = require 'request'
 # Holds a list of jobs, so we can trigger them with a number
 # instead of the job's name. Gets populated on when calling
 # list.
-jobList = {}
+jobList = []
+
+jenkinsBuildById = (msg) ->
+    # Switch the index with the job name
+    job = jobList[parseInt(msg.match[1]) - 1]
+
+    if job 
+      if job.indexOf(",") != -1
+        name = job.split(", ")
+        msg.match[1] = name[0]
+        msg.match[3] = name[1]
+      else
+        msg.match[1] = job
+      jenkinsBuild(msg)
+    else
+      msg.reply "I couldn't find that job. Try 'jenkins list' to get a list."
 
 jenkinsBuild = (msg, buildWithEmptyParameters) ->
     job = querystring.escape msg.match[1]
     if jenkinsCheckChannel(msg, job) 
       url = process.env.HUBOT_JENKINS_URL
       params = msg.match[3]
+      console.log("#{params}")
       command = if buildWithEmptyParameters then "buildWithParameters" else "build"
       path = if params then "#{url}/job/#{job}/buildWithParameters?#{params}" else "#{url}/job/#{job}/#{command}"
 
@@ -55,6 +72,7 @@ jenkinsBuild = (msg, buildWithEmptyParameters) ->
           else if 200 <= res.statusCode < 400 # Or, not an error code.
             msg.reply "(#{res.statusCode}) Build started for #{job} #{url}/job/#{job}"
           else if 400 == res.statusCode
+            console.log("#{res}")
             jenkinsBuild(msg, true)
           else
             msg.reply "Jenkins says: Status #{res.statusCode} #{body}"
@@ -179,7 +197,7 @@ jenkinsLast = (msg) ->
 jenkinsList = (msg) ->
     url = process.env.HUBOT_JENKINS_URL
     filter = new RegExp(msg.match[2], 'i')
-    req = msg.http("#{url}/api/json?depth=1&tree=jobs[name,activeConfigurations[name],color]")
+    req = msg.http("#{url}/api/json?depth=1&tree=jobs[name,activeConfigurations[name]]")
 
     if process.env.HUBOT_JENKINS_AUTH
       auth = new Buffer(process.env.HUBOT_JENKINS_AUTH).toString('base64')
@@ -194,21 +212,18 @@ jenkinsList = (msg) ->
             content = JSON.parse(body)
             for job in content.jobs
               # Add the job to the jobList
-              if !jobList.hasOwnProperty("#{job.name}")
-                jobList["#{job.name}"] = job
-
-            for job_name of jobList
-              state = if jobList[job_name].color == "red" then "fail" else "success"
-              if ((filter.test jobList[job_name].name) and jenkinsCheckChannel(msg, jobList[job_name].name))
-                console.log "going to print #{jobList[job_name].name}"
-                response += "job: #{jobList[job_name].name}, status: #{state}"
-                if jobList[job_name].activeConfigurations?
-                  matrix = ", build variants:\n"
-                  for variants in jobList[job_name].activeConfigurations
-                    matrix += " #{variants.name}\n"
-                  response += "#{matrix}\n"
-                else
-                  response += "\n"
+              index = jobList.indexOf(job.name)
+              if index == -1 
+                jobList.push(job.name)
+                index = jobList.indexOf(job.name)
+                if (jenkinsCheckChannel(msg, "#{job.name}"))
+                  response += "[#{index + 1}]  #{job.name} \n"
+                  if job.activeConfigurations?
+                    for variants in job.activeConfigurations
+                      job_variant = job.name + ", " + variants.name
+                      jobList.push(job_variant)
+                      index = jobList.indexOf(job_variant)
+                      response += "[#{index + 1}]  #{job_variant} \n"
 
             if response.length == 0
               msg.reply "There appears to be no jobs available for you. If you believe this is an error, please contact the build management team."  
