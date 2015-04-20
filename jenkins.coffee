@@ -19,7 +19,7 @@
 #   hubot jenkins list - lists Jenkins jobs. 
 #   hubot jenkins describe <job> - Describes the specified Jenkins job
 #   hubot jenkins last <job> - Details about the last build for the specified Jenkins job
-#   hubot jenkins l <jobNumber> - uploads Jenkins console log of job specified by jobNumber. List jobs to get number. 
+#   hubot jenkins l <jobNumber>, <build number> (optional) - uploads Jenkins console log of job specified by jobNumber. List jobs to get number. 
 #   hubot jenkins log <job> - uploads Jenkins console log of last failed build to chat room
 #   hubot jenkins log <job>, <build number> - uploads Jenkins console log of specified build number to chat room
 #   hubot jenkins log <job>, <build number> (optional), <build-variant> - uploads Jenkins console log for specified build variant
@@ -251,9 +251,11 @@ jenkinsCheckChannel = (msg, job_name) ->
 # Get build log by ID 
 jenkinsBuildLogById = (msg, robot) ->
     job = jobList[parseInt(msg.match[1]) ]
+    build_num = msg.match[3]
 
-    console.log("#{job}")
-
+    if build_num
+      msg.match[2] = build_num
+    
     if job
       if job.indexOf(",") != -1
         name = job.split(", ")
@@ -261,6 +263,9 @@ jenkinsBuildLogById = (msg, robot) ->
         msg.match[3] = name[1]
       else
         msg.match[1] = job
+        # Ensure that if a build number was specified it's not mistaken for the build variant in jenkinsBuildLog
+        msg.match[3] = null
+
       jenkinsBuildLog(msg, robot)
     else
       msg.send "I couldn't find that job. Try running 'jenkins list' for a list of available jobs."
@@ -342,7 +347,7 @@ module.exports = (robot) ->
     slack_bot = robot.adapter.client
     jenkinsBuildLog(msg, slack_bot)
 
-  robot.respond /j(?:enkins)? l (\d+)(, \d+)?/i, (msg) ->
+  robot.respond /j(?:enkins)? l (\d+)(, )?(\d+)?/i, (msg) ->
     slack_bot = robot.adapter.client
     jenkinsBuildLogById(msg, slack_bot)
 
