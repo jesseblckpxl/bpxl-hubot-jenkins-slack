@@ -55,7 +55,6 @@ jenkinsBuild = (msg, buildWithEmptyParameters) ->
     if jenkinsCheckChannel(msg, job) 
       url = process.env.HUBOT_JENKINS_URL
       params = msg.match[3]
-      console.log("#{params}")
       command = if buildWithEmptyParameters then "buildWithParameters" else "build"
       path = if params then "#{url}/job/#{job}/buildWithParameters?#{params}" else "#{url}/job/#{job}/#{command}"
 
@@ -72,7 +71,6 @@ jenkinsBuild = (msg, buildWithEmptyParameters) ->
           else if 200 <= res.statusCode < 400 # Or, not an error code.
             msg.reply "(#{res.statusCode}) Build started for #{job} #{url}/job/#{job}"
           else if 400 == res.statusCode
-            console.log("#{res}")
             jenkinsBuild(msg, true)
           else
             msg.reply "Jenkins says: Status #{res.statusCode} #{body}"
