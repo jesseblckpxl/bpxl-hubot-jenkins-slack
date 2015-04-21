@@ -277,55 +277,59 @@ jenkinsBuildLog = (msg, robot) ->
     build_num = msg.match[2]
     variant = msg.match[3]
     
-    if (jobList.length == 0 || !jenkinsCheckChannel(msg,job))
+    if (jobList.length == 0)
       msg.send "I couldn't locate any jobs. Please try running 'jenkins list' for a list of available jobs."
     else
-      build = if build_num then "#{build_num}" else "lastFailedBuild"
-      path = if variant then "#{url}/job/#{job}/#{variant}/#{build}/consoleText" else "#{url}/job/#{job}/#{build}/consoleText"
+      if (!jenkinsCheckChannel(msg, job))
+        msg.send "I can't upload build logs for that job. Are you in the correct Slack channel?"
+      else
+        build = if build_num then "#{build_num}" else "lastFailedBuild"
+        path = if variant then "#{url}/job/#{job}/#{variant}/#{build}/consoleText" else "#{url}/job/#{job}/#{build}/consoleText"
                
-      channel = ""
-      log_file = "log-#{job}-#{build}.txt"
-      req = msg.http(path)
+        channel = ""
+        log_file = "log-#{job}-#{build}.txt"
+        req = msg.http(path)
 
-      if process.env.HUBOT_JENKINS_AUTH
-        auth = new Buffer(process.env.HUBOT_JENKINS_AUTH).toString('base64')
-        req.headers Authorization: "Basic #{auth}"
+        if process.env.HUBOT_JENKINS_AUTH
+          auth = new Buffer(process.env.HUBOT_JENKINS_AUTH).toString('base64')
+          req.headers Authorization: "Basic #{auth}"
 
-      req.get() (err,res,body) ->
-        if err
-          msg.send "Whoops, something went wrong! #{err}"
-        else if 400 <= res.statusCode
-          msg.send "#{res.statusCode}: Build log not found, try passing in a different build number after the job name? "
-        else
-          try
-            fs.writeFile log_file, "#{body}", (error) ->
-              if error
-                console.error("Error writing file #{log_file}", error) 
-              else
-                log_body = ->
-                  fs.readFile log_file, 'utf8', (error, body)->
-                    console.log("something went wrong trying when trying to read in the log file") if error
-                  return body
+        req.get() (err,res,body) ->
+          if err
+            msg.send "Whoops, something went wrong! #{err}"
+          else if 400 <= res.statusCode
+            msg.send "#{res.statusCode}: Build log not found, try passing in a different build number after the job name? "
+          else
+            try
+              fs.writeFile log_file, "#{body}", (error) ->
+                if error
+                  console.error("Error writing file #{log_file}", error) 
+                else
+                  log_body = ->
+                    fs.readFile log_file, 'utf8', (error, body)->
+                      console.log("something went wrong trying when trying to read in the log file") if error
+                    return body
 
-                # get the slack channel id to pass to slack api upload file method
-                for k of robot.channels
-                  channel_name = "#{robot.channels[k].name}"
-                  if channel_name.match msg.envelope.room
-                    console.log("#{k} :#{robot.channels[k].name}")
-                    channel += "#{k}"
-                api_token = process.env.HUBOT_SLACK_API_TOKEN
-                options = {token: "#{api_token}", channels: "#{channel}", filename: "#{job}-build-#{build}-log.txt"}
-                options["content"] = log_body()
+                  # get the slack channel id to pass to slack api upload file method
+                  for k of robot.channels
+                    channel_name = "#{robot.channels[k].name}"
+                    if channel_name.match msg.envelope.room
+                      console.log("#{k} :#{robot.channels[k].name}")
+                      channel += "#{k}"
+                  api_token = process.env.HUBOT_SLACK_API_TOKEN
+                  options = {token: "#{api_token}", channels: "#{channel}", filename: "#{job}-build-#{build}-log.txt"}
+                  options["content"] = log_body()
          
-                request.post "https://api.slack.com/api/files.upload", {form: options }, (error, response, body) ->
-                  if error
-                    msg.send "something went wrong: #{error}"
-                  else
-                    msg.send "Build file uploaded."
-                    fs.unlinkSync log_file
+                  request.post "https://api.slack.com/api/files.upload", {form: options }, (error, response, body) ->
+                    if error
+                      msg.send "something went wrong: #{error}"
+                    else
+                      msg.send "Build file uploaded."
+                      # Delete build log file after upload
+                      fs.unlinkSync log_file
 
-          catch error
-            msg.send error          
+            catch error
+              msg.send error          
  
 module.exports = (robot) ->
   robot.respond /j(?:enkins)? build ([\w\.\-_ ]+)(, (.+))?/i, (msg) ->
