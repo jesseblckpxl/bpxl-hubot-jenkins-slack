@@ -16,10 +16,10 @@
 #   hubot jenkins b <jobNumber> - builds the job specified by jobNumber. List jobs to get number.
 #   hubot jenkins build <job> - builds the specified Jenkins job
 #   hubot jenkins build <job>, <params> - builds the specified Jenkins job with parameters as key=value&key2=value2
-#   hubot jenkins list - lists Jenkins jobs. 
+#   hubot jenkins list - lists Jenkins jobs.
 #   hubot jenkins describe <job> - Describes the specified Jenkins job
 #   hubot jenkins last <job> - Details about the last build for the specified Jenkins job
-#   hubot jenkins l <jobNumber>, <build number> (optional) - uploads Jenkins console log of job specified by jobNumber. List jobs to get number. 
+#   hubot jenkins l <jobNumber>, <build number> (optional) - uploads Jenkins console log of job specified by jobNumber. List jobs to get number.
 #   hubot jenkins log <job> - uploads Jenkins console log of last failed build to chat room
 #   hubot jenkins log <job>, <build number> - uploads Jenkins console log of specified build number to chat room
 #   hubot jenkins log <job>, <build number> (optional), <build-variant> - uploads Jenkins console log for specified build variant
@@ -40,7 +40,7 @@ jenkinsBuildById = (msg) ->
     # Switch the index with the job name
     job = jobList[parseInt(msg.match[1])]
 
-    if job 
+    if job
       if job.indexOf(",") != -1
         name = job.split(", ")
         msg.match[1] = name[0]
@@ -53,7 +53,7 @@ jenkinsBuildById = (msg) ->
 
 jenkinsBuild = (msg, buildWithEmptyParameters) ->
     job = querystring.escape msg.match[1]
-    if jenkinsCheckChannel(msg, job) 
+    if jenkinsCheckChannel(msg, job)
       url = process.env.HUBOT_JENKINS_URL
       params = msg.match[3]
       command = if buildWithEmptyParameters then "buildWithParameters" else "build"
@@ -81,16 +81,16 @@ jenkinsBuild = (msg, buildWithEmptyParameters) ->
 jenkinsDescribe = (msg) ->
     url = process.env.HUBOT_JENKINS_URL
     job = msg.match[1]
-    
+
     if jenkinsCheckChannel(msg, job)
       path = "#{url}/job/#{job}/api/json"
-  
+
       req = msg.http(path)
 
       if process.env.HUBOT_JENKINS_AUTH
         auth = new Buffer(process.env.HUBOT_JENKINS_AUTH).toString('base64')
         req.headers Authorization: "Basic #{auth}"
- 
+
       req.header('Content-Length', 0)
       req.get() (err, res, body) ->
           if err
@@ -128,7 +128,7 @@ jenkinsDescribe = (msg) ->
                 response += "PARAMETERS: #{parameters}\n"
 
               msg.send response
-  
+
               if not content.lastBuild
                 return
 
@@ -163,10 +163,10 @@ jenkinsDescribe = (msg) ->
 jenkinsLast = (msg) ->
     url = process.env.HUBOT_JENKINS_URL
     job = msg.match[1]
-   
+
     if jenkinsCheckChannel(msg, job)
       path = "#{url}/job/#{job}/lastBuild/api/json"
- 
+
       req = msg.http(path)
 
       if process.env.HUBOT_JENKINS_AUTH
@@ -183,7 +183,7 @@ jenkinsLast = (msg) ->
               content = JSON.parse(body)
               response += "NAME: #{content.fullDisplayName}\n"
               response += "URL: #{content.url}\n"
-  
+
               if content.description
                 response += "DESCRIPTION: #{content.description}\n"
 
@@ -211,7 +211,7 @@ jenkinsList = (msg) ->
             content = JSON.parse(body)
             for job in content.jobs
               # Add the job to the jobList
-              if jobList.indexOf(job.name) == -1 
+              if jobList.indexOf(job.name) == -1
                 jobList.push(job.name)
               # Check job against channel name before adding it to the response
               if (jenkinsCheckChannel(msg, job.name))
@@ -232,9 +232,9 @@ jenkinsList = (msg) ->
                     response += "[#{index}] #{job_variant} \n"
 
             if response.length == 0
-              msg.reply "There appears to be no jobs available for you. If you believe this is an error, please contact the build management team."  
+              msg.reply "There appears to be no jobs available for you. If you believe this is an error, please contact the build management team."
             else
-              response += "You can trigger builds or obtain build logs using the [job number], or job name listed above."
+              response += "\n Trigger a build by using the commands 'jenkinsBuild <job name> <parameters (optional)>' or 'jenkinsBuildById [job number]'. To get more information, including build parameters, on a specifc job listed above, use the command 'jenkins describe <job name>'."
               msg.send response
 
           catch error
@@ -243,19 +243,19 @@ jenkinsList = (msg) ->
 # check that Jenkins job name matches chat room name
 jenkinsCheckChannel = (msg, job_name) ->
       channel = msg.envelope.room
-      # splitting a string, e.g. android-hongkong, into an array, and getting the last element in that array, e.g. 'hongkong'. 
+      # splitting a string, e.g. android-hongkong, into an array, and getting the last element in that array, e.g. 'hongkong'.
       # Slack channels names should end with market names to correctly match with available Jenkins jobs
       market = channel.split('-').pop()
       return (job_name.indexOf(market) != -1)
 
-# Get build log by ID 
+# Get build log by ID
 jenkinsBuildLogById = (msg, robot) ->
     job = jobList[parseInt(msg.match[1]) ]
     build_num = msg.match[3]
 
     if build_num
       msg.match[2] = build_num
-    
+
     if job
       if job.indexOf(",") != -1
         name = job.split(", ")
@@ -276,7 +276,7 @@ jenkinsBuildLog = (msg, robot) ->
     job = msg.match[1]
     build_num = msg.match[2]
     variant = msg.match[3]
-    
+
     if (jobList.length == 0)
       msg.send "I couldn't locate any jobs. Please try running 'jenkins list' for a list of available jobs."
     else
@@ -285,7 +285,7 @@ jenkinsBuildLog = (msg, robot) ->
       else
         build = if build_num then "#{build_num}" else "lastFailedBuild"
         path = if variant then "#{url}/job/#{job}/#{variant}/#{build}/consoleText" else "#{url}/job/#{job}/#{build}/consoleText"
-               
+
         channel = ""
         log_file = "log-#{job}-#{build}.txt"
         req = msg.http(path)
@@ -303,7 +303,7 @@ jenkinsBuildLog = (msg, robot) ->
             try
               fs.writeFile log_file, "#{body}", (error) ->
                 if error
-                  console.error("Error writing file #{log_file}", error) 
+                  console.error("Error writing file #{log_file}", error)
                 else
                   log_body = ->
                     fs.readFile log_file, 'utf8', (error, body)->
@@ -319,7 +319,7 @@ jenkinsBuildLog = (msg, robot) ->
                   api_token = process.env.HUBOT_SLACK_API_TOKEN
                   options = {token: "#{api_token}", channels: "#{channel}", filename: "#{job}-build-#{build}-log.txt"}
                   options["content"] = log_body()
-         
+
                   request.post "https://api.slack.com/api/files.upload", {form: options }, (error, response, body) ->
                     if error
                       msg.send "something went wrong: #{error}"
@@ -329,8 +329,8 @@ jenkinsBuildLog = (msg, robot) ->
                       fs.unlinkSync log_file
 
             catch error
-              msg.send error          
- 
+              msg.send error
+
 module.exports = (robot) ->
   robot.respond /j(?:enkins)? build ([\w\.\-_ ]+)(, (.+))?/i, (msg) ->
     jenkinsBuild(msg, false)
