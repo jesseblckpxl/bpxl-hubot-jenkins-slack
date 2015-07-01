@@ -234,7 +234,7 @@ jenkinsList = (msg) ->
             if response.length == 0
               msg.reply "There appears to be no jobs available for you. If you believe this is an error, please contact the build management team."
             else
-              response += "\n Trigger a build by using the commands 'jenkinsBuild <job name> <parameters (optional)>' or 'jenkinsBuildById [job number]'. To get more information, including build parameters, on a specifc job listed above, use the command 'jenkins describe <job name>'."
+              response += "\n Trigger a build by using the commands 'jenkins build <job name> <parameters (optional)>' or 'jenkins b [job number]'. To get more information, including build parameters, on a specifc job listed above, use the command 'jenkins describe <job name>'."
               msg.send response
 
           catch error
@@ -316,6 +316,13 @@ jenkinsBuildLog = (msg, robot) ->
                     if channel_name.match msg.envelope.room
                       console.log("#{k} :#{robot.channels[k].name}")
                       channel += "#{k}"
+                  #check private groups if channel_name still empty
+                  if channel_name.match ""
+                    for j of robot.groups
+                      group_name = "#{robot.groups[j].name}"
+                      if group_name.match msg.envelope.room
+                        console.log("#{j}: #{robot.groups[j].name}")
+                        channel += "#{j}"
                   api_token = process.env.HUBOT_SLACK_API_TOKEN
                   options = {token: "#{api_token}", channels: "#{channel}", filename: "#{job}-build-#{build}-log.txt"}
                   options["content"] = log_body()
