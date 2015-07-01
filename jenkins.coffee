@@ -233,7 +233,7 @@ jenkinsList = (msg) ->
             if response.length == 0
               msg.reply "There appears to be no jobs available for you. If you believe this is an error, please contact the build management team."
             else
-              response += "\n Trigger a build by using the commands 'jenkins build <job name> <parameters (optional)>' or 'jenkins b [job number]'. To get more information, including build parameters, on a specifc job listed above, use the command 'jenkins describe <job name>'."
+              response += "\n Trigger a build by using the commands 'jenkins build <job name> -p <parameters (optional)>' or 'jenkins b [job number]'. To get more information, including build parameters, on a specifc job listed above, use the command 'jenkins describe <job name>'."
               msg.send response
 
           catch error
