@@ -15,14 +15,13 @@
 #
 #   hubot jenkins b <jobNumber> - builds the job specified by jobNumber. List jobs to get number.
 #   hubot jenkins build <job> - builds the specified Jenkins job
-#   hubot jenkins build <job>, <params> - builds the specified Jenkins job with parameters as key=value&key2=value2
+#   hubot jenkins build <job> -p <params> - builds the specified Jenkins job with parameters as key=value&key2=value2
 #   hubot jenkins list - lists Jenkins jobs.
 #   hubot jenkins describe <job> - Describes the specified Jenkins job
 #   hubot jenkins last <job> - Details about the last build for the specified Jenkins job
-#   hubot jenkins l <jobNumber>, <build number> (optional) - uploads Jenkins console log of job specified by jobNumber. List jobs to get number.
+#   hubot jenkins l <jobNumber> -b <build number> (optional) - uploads Jenkins console log of job specified by jobNumber. List jobs to get number.
 #   hubot jenkins log <job> - uploads Jenkins console log of last failed build to chat room
-#   hubot jenkins log <job>, <build number> - uploads Jenkins console log of specified build number to chat room
-#   hubot jenkins log <job>, <build number> (optional), <build-variant> - uploads Jenkins console log for specified build variant
+#   hubot jenkins log <job> -b <build number> (optional) -v <build-variant> (optional) - uploads Jenkins console log for specified build variant and number (if provided)
 #
 # Author:
 # Adapted from Doug Cole's jenkins.coffee
@@ -44,7 +43,7 @@ jenkinsBuildById = (msg) ->
       if job.indexOf(",") != -1
         name = job.split(", ")
         msg.match[1] = name[0]
-        msg.match[3] = name[1]
+        msg.match[2] = name[1]
       else
         msg.match[1] = job
       jenkinsBuild(msg)
@@ -55,7 +54,7 @@ jenkinsBuild = (msg, buildWithEmptyParameters) ->
     job = querystring.escape msg.match[1]
     if jenkinsCheckChannel(msg, job)
       url = process.env.HUBOT_JENKINS_URL
-      params = msg.match[3]
+      params = msg.match[2]
       command = if buildWithEmptyParameters then "buildWithParameters" else "build"
       path = if params then "#{url}/job/#{job}/buildWithParameters?#{params}" else "#{url}/job/#{job}/#{command}"
 
@@ -251,7 +250,7 @@ jenkinsCheckChannel = (msg, job_name) ->
 # Get build log by ID
 jenkinsBuildLogById = (msg, robot) ->
     job = jobList[parseInt(msg.match[1]) ]
-    build_num = msg.match[3]
+    build_num = msg.match[2]
 
     if build_num
       msg.match[2] = build_num
@@ -339,7 +338,7 @@ jenkinsBuildLog = (msg, robot) ->
               msg.send error
 
 module.exports = (robot) ->
-  robot.respond /j(?:enkins)? build ([\w\.\-_ ]+)(, (.+))?/i, (msg) ->
+  robot.respond /j(?:enkins)? build ([\w\.\-_]+)?(?:[ \-p]+)?([\w\.\-_=&,\w=]+)?/i, (msg) ->
     jenkinsBuild(msg, false)
 
   robot.respond /j(?:enkins)? b (\d+)/i, (msg) ->
@@ -354,11 +353,11 @@ module.exports = (robot) ->
   robot.respond /j(?:enkins)? last (.*)/i, (msg) ->
     jenkinsLast(msg)
 
-  robot.respond /j(?:enkins)? log ([\w\.\-_]+)(?:[\,\ ]+)?([\d]+)?(?:[\,\ ]+)?([\([\w\.\-_=,\w=]+)?/i, (msg) ->
+  robot.respond /j(?:enkins)? log ([\w\.\-_]+)(?:[\-b\ ]+)?([\d]+)?(?:[ \-v \ ]+)?([\w\.\-_=,\w=]+)?/i, (msg) ->
     slack_bot = robot.adapter.client
     jenkinsBuildLog(msg, slack_bot)
 
-  robot.respond /j(?:enkins)? l (\d+)(?:[\,\ ]+)?(\d+)?/i, (msg) ->
+  robot.respond /j(?:enkins)? l (\d+)(?:[\,\-b ]+)?(\d+)?/i, (msg) ->
     slack_bot = robot.adapter.client
     jenkinsBuildLogById(msg, slack_bot)
 
