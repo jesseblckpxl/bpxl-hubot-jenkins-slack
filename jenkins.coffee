@@ -283,7 +283,7 @@ jenkinsBuildLog = (msg, robot) ->
       if (!jenkinsCheckChannel(msg, job))
         msg.send "I can't upload build logs for that job. Are you in the correct Slack channel?"
       else
-        build = if build_num then "#{build_num}" else "lastFailedBuild"
+        build = if build_num then "#{build_num}" else "lastBuild"
         path = if variant then "#{url}/job/#{job}/#{variant}/#{build}/consoleText" else "#{url}/job/#{job}/#{build}/consoleText"
 
         channel = ""
@@ -358,7 +358,7 @@ module.exports = (robot) ->
     slack_bot = robot.adapter.client
     jenkinsBuildLog(msg, slack_bot)
 
-  robot.respond /j(?:enkins)? l (\d+)(, )?(\d+)?/i, (msg) ->
+  robot.respond /j(?:enkins)? l (\d+)(?:[\,\ ]+)?(\d+)?/i, (msg) ->
     slack_bot = robot.adapter.client
     jenkinsBuildLogById(msg, slack_bot)
 
