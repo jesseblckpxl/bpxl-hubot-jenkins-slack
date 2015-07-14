@@ -245,7 +245,7 @@ jenkinsCheckChannel = (msg, job_name) ->
       # splitting a string, e.g. android-hongkong, into an array, and getting the last element in that array, e.g. 'hongkong'.
       # Slack channels names should end with market names to correctly match with available Jenkins jobs
       market = channel.split('-').pop()
-      return (job_name.indexOf(market) != -1)
+      return (job_name.indexOf(market) != -1 || channel.match("build-management"))
 
 # Get build log by ID
 jenkinsBuildLogById = (msg, robot) ->
