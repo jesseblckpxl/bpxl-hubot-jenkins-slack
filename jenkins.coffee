@@ -40,10 +40,12 @@ jenkinsBuildById = (msg) ->
     job = jobList[parseInt(msg.match[1])]
 
     if job
-      if job.indexOf(",") != -1
-        name = job.split(", ")
-        msg.match[1] = name[0]
-        msg.match[2] = name[1]
+      if job.indexOf("build-variant") != -1
+        info = job.split("build-variant: [")
+        jobname = info[0].split(",")[0]
+        variant = info[1].split("]")[0]
+        msg.match[1] = jobname
+        msg.match[3] = variant
       else
         msg.match[1] = job
       jenkinsBuild(msg)
@@ -54,7 +56,15 @@ jenkinsBuild = (msg, buildWithEmptyParameters) ->
     job = querystring.escape msg.match[1]
     if jenkinsCheckChannel(msg, job)
       url = process.env.HUBOT_JENKINS_URL
-      params = msg.match[2]
+      # Build out the variants and add to build parameters string
+      if msg.match[3]
+        variants = "BUILD_ALL=false"
+        axis = msg.match[3].split(",")
+        for v in axis
+          bv = v.split("=")
+          variants += "&" + bv[0].toUpperCase() + "V=" + bv[1]
+
+      params = if msg.match[2] then msg.match[2] + "&" + variants else variants
       command = if buildWithEmptyParameters then "buildWithParameters" else "build"
       path = if params then "#{url}/job/#{job}/buildWithParameters?#{params}" else "#{url}/job/#{job}/#{command}"
 
@@ -220,7 +230,7 @@ jenkinsList = (msg) ->
               # Check for build variants
               if job.activeConfigurations?
                 for variant in job.activeConfigurations
-                  job_variant = job.name + ", " + variant.name
+                  job_variant = job.name + ", build-variant: [" + variant.name + "]"
                   # Add build variant to job list
                   if jobList.indexOf(job_variant) == -1
                     jobList.push(job_variant)
